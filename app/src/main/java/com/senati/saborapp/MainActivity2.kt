@@ -31,7 +31,7 @@ class MainActivity2 : AppCompatActivity() {
             binding.btnReportes.visibility = View.VISIBLE
         }
 
-        // Abrir el catálogo de platos (HU-05)
+        // Abrir el catálogo de platos (HU-05, HU-07)
         binding.btnPlatos.setOnClickListener {
             val intent = Intent(this, ListaPlatosActivity::class.java)
             startActivity(intent)
@@ -43,8 +43,10 @@ class MainActivity2 : AppCompatActivity() {
             startActivity(intent)
         }
 
+        // Abrir el módulo de pedidos (HU-08, HU-09)
         binding.btnPedidos.setOnClickListener {
-            Toast.makeText(this, "Módulo de Pedidos (Sprint 3)", Toast.LENGTH_SHORT).show()
+            val intent = Intent(this, PedidoActivity::class.java)
+            startActivity(intent)
         }
 
         binding.btnReportes.setOnClickListener {

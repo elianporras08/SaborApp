@@ -5,7 +5,10 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.senati.saborapp.databinding.ItemPlatoBinding
 
-class PlatoAdapter(private val listaPlatos: List<Plato>) : RecyclerView.Adapter<PlatoAdapter.PlatoViewHolder>() {
+class PlatoAdapter(
+    private val listaPlatos: List<Plato>,
+    private val onItemClick: ((Plato) -> Unit)? = null
+) : RecyclerView.Adapter<PlatoAdapter.PlatoViewHolder>() {
 
     inner class PlatoViewHolder(val binding: ItemPlatoBinding) : RecyclerView.ViewHolder(binding.root)
 
@@ -18,12 +21,17 @@ class PlatoAdapter(private val listaPlatos: List<Plato>) : RecyclerView.Adapter<
         val plato = listaPlatos[position]
         holder.binding.tvNombrePlato.text = plato.nombre
         holder.binding.tvCategoriaPrecioPlato.text = "${plato.categoria} · S/ %.2f".format(plato.precio)
+
         if (plato.disponible == 1) {
             holder.binding.tvEstadoPlato.text = "Disponible"
             holder.binding.tvEstadoPlato.setTextColor(holder.itemView.context.getColor(android.R.color.holo_green_dark))
         } else {
             holder.binding.tvEstadoPlato.text = "Agotado"
             holder.binding.tvEstadoPlato.setTextColor(holder.itemView.context.getColor(android.R.color.holo_red_dark))
+        }
+
+        holder.itemView.setOnClickListener {
+            onItemClick?.invoke(plato)
         }
     }
 

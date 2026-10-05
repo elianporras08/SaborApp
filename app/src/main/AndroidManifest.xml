@@ -35,7 +35,7 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- Formulario de Registro de Platos -->
+        <!-- Formulario de Registro / Edición de Platos -->
         <activity
             android:name=".RegistrarPlatoActivity"
             android:exported="false"
@@ -50,6 +50,18 @@
         <!-- Formulario de Registro de Mesas -->
         <activity
             android:name=".RegistrarMesaActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Módulo de Pedidos por Mesa -->
+        <activity
+            android:name=".PedidoActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Cuenta de la Mesa -->
+        <activity
+            android:name=".CuentaActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

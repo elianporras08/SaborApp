@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:id="@+id/tvTituloCuenta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Cuenta · Mesa"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+    <TextView
+        android:id="@+id/tvSubtituloCuenta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pedido #"
+        android:textSize="14sp"
+        android:textColor="#757575"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Lista de items consumidos -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerDetalleCuenta"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Total de la cuenta -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="24dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Total"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/black" />
+
+        <TextView
+            android:id="@+id/tvTotalCuenta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="S/ 0.00"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/naranja_sabor" />
+    </LinearLayout>
+
+    <!-- Botón Cerrar Cuenta (HU-09) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCerrarCuenta"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Cerrar cuenta"
+        android:layout_marginBottom="12dp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <!-- Botón Compartir por WhatsApp (HU-11, Sprint 4) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCompartirWhatsApp"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Compartir por WhatsApp"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        app:strokeColor="@color/naranja_sabor"
+        android:textColor="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>

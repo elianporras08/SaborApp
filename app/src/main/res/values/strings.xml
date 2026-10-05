@@ -12,13 +12,18 @@
     <string name="error_campo_vacio">Campo requerido</string>
     <string name="error_credenciales">Credenciales incorrectas</string>
 
-    <!-- Platos (HU-05) -->
+    <!-- Platos (HU-05, HU-07) -->
     <string name="titulo_catalogo_platos">Catálogo de Platos</string>
     <string name="titulo_registrar_plato">Registrar Nuevo Plato</string>
+    <string name="titulo_editar_plato">Editar plato</string>
     <string name="hint_nombre_plato">Nombre del plato</string>
     <string name="hint_categoria">Categoría</string>
     <string name="hint_precio">Precio (S/)</string>
     <string name="btn_guardar_plato">Guardar Plato</string>
+    <string name="btn_actualizar_plato">Actualizar</string>
+    <string name="btn_eliminar_plato">Eliminar</string>
+    <string name="switch_disponible">Disponible</string>
+    <string name="hint_buscar_plato">Buscar plato</string>
 
     <!-- Mesas (HU-06) -->
     <string name="titulo_listado_mesas">Listado de Mesas</string>
@@ -26,4 +31,14 @@
     <string name="hint_numero_mesa">Número de mesa</string>
     <string name="hint_capacidad_mesa">Capacidad (1 a 12 personas)</string>
     <string name="btn_guardar_mesa">Guardar Mesa</string>
+
+    <!-- Pedidos y Cuenta (HU-08, HU-09) -->
+    <string name="titulo_pedidos">Pedidos</string>
+    <string name="lbl_plato">Plato</string>
+    <string name="hint_cant">Cant.</string>
+    <string name="btn_agregar">Agregar</string>
+    <string name="btn_ver_cuenta">Ver cuenta</string>
+    <string name="btn_cerrar_cuenta">Cerrar cuenta</string>
+    <string name="btn_compartir_whatsapp">Compartir por WhatsApp</string>
+    <string name="lbl_total">Total</string>
 </resources>

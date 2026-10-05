@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pedidos"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Grilla de mesas (HU-08, CA1) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerMesasPedido"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Título de mesa seleccionada -->
+    <TextView
+        android:id="@+id/tvMesaSeleccionada"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Seleccione una mesa"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Selector de Plato y Cantidad -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Plato"
+        android:textSize="12sp"
+        android:textColor="#757575" />
+
+    <Spinner
+        android:id="@+id/spPlatosDisponibles"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="12dp"
+        android:background="@android:drawable/btn_dropdown"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etCantidadPlato"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Cant."
+                android:text="1"
+                android:inputType="number"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAgregarPlato"
+            android:layout_width="0dp"
+            android:layout_height="55dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="Agregar"
+            app:backgroundTint="@color/naranja_sabor"
+            app:cornerRadius="8dp" />
+    </LinearLayout>
+
+    <!-- Lista de items agregados -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerDetallePedido"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Total -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Total"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/black" />
+
+        <TextView
+            android:id="@+id/tvTotalPedido"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="S/ 0.00"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/naranja_sabor" />
+    </LinearLayout>
+
+    <!-- Botón Ver cuenta -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnVerCuenta"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Ver cuenta"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>

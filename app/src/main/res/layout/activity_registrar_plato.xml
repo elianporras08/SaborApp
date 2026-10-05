@@ -8,6 +8,7 @@
     android:background="@color/fondo_gris">
 
     <TextView
+        android:id="@+id/tvTituloPlato"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Registrar Nuevo Plato"
@@ -51,7 +52,7 @@
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="24dp"
+        android:layout_marginBottom="16dp"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
         <com.google.android.material.textfield.TextInputEditText
@@ -63,12 +64,36 @@
             android:maxLines="1" />
     </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Switch de Disponibilidad (Prototipo P1-04) -->
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/swDisponible"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Disponible"
+        android:checked="true"
+        android:textSize="16sp"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Botón Principal: Guardar / Actualizar -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnGuardarPlato"
         android:layout_width="match_parent"
         android:layout_height="55dp"
         android:text="Guardar Plato"
+        android:layout_marginBottom="12dp"
         app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <!-- Botón Secundario: Eliminar (Solo visible en modo edición) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnEliminarPlato"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Eliminar"
+        android:visibility="gone"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        app:strokeColor="@color/rojo_sabor"
+        android:textColor="@color/rojo_sabor"
         app:cornerRadius="8dp" />
 
 </LinearLayout>

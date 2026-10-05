@@ -8,7 +8,7 @@ import android.database.sqlite.SQLiteConstraintException
 class MesaDao(context: Context) {
     private val dbHelper = DBHelper(context)
 
-    // Registrar mesa validando número único (HU-06, CA1)
+    // Registrar una mesa validando si el número ya existe (HU-06, CA1)
     fun insertar(mesa: Mesa): String {
         val db = dbHelper.writableDatabase
         return try {
@@ -22,15 +22,15 @@ class MesaDao(context: Context) {
             if (resultado != -1L) "OK" else "Error al registrar la mesa"
         } catch (e: SQLiteConstraintException) {
             db.close()
-            "La mesa ya existe" // Criterio de aceptación HU-06, CA1
+            "La mesa ya existe" // Criterio de aceptación HU-06
         }
     }
 
-    // Listar las mesas ordenadas por número
+    // Listar las mesas ordenadas por su número
     fun listar(): List<Mesa> {
         val lista = mutableListOf<Mesa>()
         val db = dbHelper.readableDatabase
-        val cursor: Cursor = db.rawQuery("SELECT * FROM mesa ORDER BY numero", null)
+        val cursor: Cursor = db.rawQuery("select * from mesa order by numero", null)
 
         if (cursor.moveToFirst()) {
             do {
