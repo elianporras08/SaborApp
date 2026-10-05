@@ -1,0 +1,3015 @@
+﻿package com.senati.saborapp
+
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.ext.junit.runners.AndroidJUnit4
+
+import org.junit.Test
+import org.junit.runner.RunWith
+
+import org.junit.Assert.*
+
+/**
+ * Instrumented test, which will execute on an Android device.
+ *
+ * See [testing documentation](http://d.android.com/tools/testing).
+ */
+@RunWith(AndroidJUnit4::class)
+class ExampleInstrumentedTest {
+    @Test
+    fun useAppContext() {
+        // Context of the app under test.
+        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
+        assertEquals("com.senati.saborapp", appContext.packageName)
+    }
+}
+package com.senati.saborapp
+
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.senati.saborapp.databinding.ActivityCuentaBinding
+
+class CuentaActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityCuentaBinding
+    private lateinit var pedidoDao: PedidoDao
+    private var idMesa: Int = -1
+    private var numeroMesa: Int = -1
+    private var pedidoActual: Pedido? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityCuentaBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        pedidoDao = PedidoDao(this)
+
+        idMesa = intent.getIntExtra("EXTRA_MESA_ID", -1)
+        numeroMesa = intent.getIntExtra("EXTRA_MESA_NUMERO", -1)
+
+        binding.tvTituloCuenta.text = "Cuenta Â· Mesa $numeroMesa"
+        binding.recyclerDetalleCuenta.layoutManager = LinearLayoutManager(this)
+
+        cargarCuenta()
+
+        // BotÃ³n Cerrar Cuenta en una transacciÃ³n (HU-09, CA2)
+        binding.btnCerrarCuenta.setOnClickListener {
+            val pedido = pedidoActual
+            if (pedido == null) {
+                Toast.makeText(this, "No hay pedido abierto", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val exito = pedidoDao.cerrarCuenta(pedido.id, idMesa)
+            if (exito) {
+                Toast.makeText(this, "Mesa $numeroMesa liberada", Toast.LENGTH_LONG).show()
+                binding.btnCerrarCuenta.isEnabled = false
+                finish() // Cierra la pantalla y regresa
+            } else {
+                Toast.makeText(this, "Error al cerrar la cuenta", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // Compartir la cuenta por WhatsApp / Apps de mensajerÃ­a (HU-11, CA1, CA2, CA3)
+        binding.btnCompartirWhatsApp.setOnClickListener {
+            val pedido = pedidoActual
+            val sb = StringBuilder()
+            sb.append("PollerÃ­a El Buen Sabor\n")
+            sb.append("Cuenta - Mesa $numeroMesa\n")
+
+            if (pedido != null) {
+                sb.append("Pedido #${pedido.id} Â· ${pedido.fecha}\n\n")
+                val detalles = pedidoDao.listarDetallesPedido(pedido.id)
+                for (d in detalles) {
+                    sb.append("${d.cantidad} x ${d.nombrePlato} - S/ %.2f\n".format(d.subtotal))
+                }
+                sb.append("\nTotal: S/ %.2f\n".format(pedido.total))
+            } else {
+                sb.append("Total: S/ 0.00\n")
+            }
+            sb.append("Â¡Gracias por su preferencia!")
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, sb.toString())
+            }
+            startActivity(Intent.createChooser(shareIntent, "Compartir cuenta"))
+        }
+    }
+
+    private fun cargarCuenta() {
+        val pedido = pedidoDao.obtenerPedidoAbiertoPorMesa(idMesa)
+        pedidoActual = pedido
+
+        if (pedido != null) {
+            binding.tvSubtituloCuenta.text = "Pedido #${pedido.id} Â· ${pedido.fecha}"
+            val detalles = pedidoDao.listarDetallesPedido(pedido.id)
+            binding.recyclerDetalleCuenta.adapter = DetallePedidoAdapter(detalles)
+            binding.tvTotalCuenta.text = "S/ %.2f".format(pedido.total)
+            binding.btnCerrarCuenta.isEnabled = true
+        } else {
+            binding.tvSubtituloCuenta.text = "No hay pedido abierto para esta mesa"
+            binding.recyclerDetalleCuenta.adapter = DetallePedidoAdapter(emptyList())
+            binding.tvTotalCuenta.text = "S/ 0.00"
+            // CA3: Si la mesa estÃ¡ LIBRE o sin pedido, el botÃ³n estÃ¡ deshabilitado
+            binding.btnCerrarCuenta.isEnabled = false
+        }
+    }
+}
+package com.senati.saborapp
+
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
+
+class DBHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
+
+    companion object {
+        const val DB_NAME = "saborapp.db"
+        const val DB_VERSION = 2
+    }
+
+    override fun onCreate(db: SQLiteDatabase) {
+        // Tablas de CatÃ¡logo y Usuarios
+        db.execSQL("CREATE TABLE usuario (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT UNIQUE, clave TEXT, rol TEXT)")
+        db.execSQL("CREATE TABLE plato (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT NOT NULL, categoria TEXT, precio REAL CHECK(precio > 0), disponible INTEGER)")
+        db.execSQL("CREATE TABLE mesa (id INTEGER PRIMARY KEY AUTOINCREMENT, numero INTEGER UNIQUE, capacidad INTEGER, estado TEXT)")
+
+        // Tablas de OperaciÃ³n Principal (Sprint 3)
+        db.execSQL("CREATE TABLE pedido (id INTEGER PRIMARY KEY AUTOINCREMENT, id_mesa INTEGER REFERENCES mesa(id), fecha TEXT, estado TEXT, total REAL)")
+        db.execSQL("CREATE TABLE detalle_pedido (id INTEGER PRIMARY KEY AUTOINCREMENT, id_pedido INTEGER REFERENCES pedido(id) ON DELETE CASCADE, id_plato INTEGER REFERENCES plato(id), cantidad INTEGER CHECK(cantidad > 0), precio_unit REAL, subtotal REAL)")
+
+        // Usuarios por defecto (HU-04)
+        db.execSQL("INSERT INTO usuario (usuario, clave, rol) VALUES ('admin', '1234', 'ADMIN')")
+        db.execSQL("INSERT INTO usuario (usuario, clave, rol) VALUES ('mozo', '1234', 'MOZO')")
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("CREATE TABLE pedido (id INTEGER PRIMARY KEY AUTOINCREMENT, id_mesa INTEGER REFERENCES mesa(id), fecha TEXT, estado TEXT, total REAL)")
+            db.execSQL("CREATE TABLE detalle_pedido (id INTEGER PRIMARY KEY AUTOINCREMENT, id_pedido INTEGER REFERENCES pedido(id) ON DELETE CASCADE, id_plato INTEGER REFERENCES plato(id), cantidad INTEGER CHECK(cantidad > 0), precio_unit REAL, subtotal REAL)")
+        }
+    }
+
+    override fun onConfigure(db: SQLiteDatabase) {
+        super.onConfigure(db)
+        db.setForeignKeyConstraintsEnabled(true)
+    }
+}
+package com.senati.saborapp
+
+data class DetallePedido(
+    val id: Int = 0,
+    val idPedido: Int,
+    val idPlato: Int,
+    val nombrePlato: String = "",
+    val cantidad: Int,
+    val precioUnit: Double,
+    val subtotal: Double
+)
+package com.senati.saborapp
+
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import com.senati.saborapp.databinding.ItemDetallePedidoBinding
+
+class DetallePedidoAdapter(
+    private val listaDetalles: List<DetallePedido>
+) : RecyclerView.Adapter<DetallePedidoAdapter.DetalleViewHolder>() {
+
+    inner class DetalleViewHolder(val binding: ItemDetallePedidoBinding) : RecyclerView.ViewHolder(binding.root)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DetalleViewHolder {
+        val binding = ItemDetallePedidoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return DetalleViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: DetalleViewHolder, position: Int) {
+        val detalle = listaDetalles[position]
+        holder.binding.tvCantidadNombre.text = "${detalle.cantidad} x ${detalle.nombrePlato}"
+        holder.binding.tvSubtotal.text = "%.2f".format(detalle.subtotal)
+    }
+
+    override fun getItemCount(): Int = listaDetalles.size
+}
+package com.senati.saborapp
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.GridLayoutManager
+import com.senati.saborapp.databinding.ActivityListaMesasBinding
+
+class ListaMesasActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityListaMesasBinding
+    private lateinit var mesaDao: MesaDao
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityListaMesasBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        mesaDao = MesaDao(this)
+
+        // Configurar RecyclerView en grilla de 3 columnas (HU-06)
+        binding.recyclerMesas.layoutManager = GridLayoutManager(this, 3)
+
+        binding.fabAgregarMesa.setOnClickListener {
+            val intent = Intent(this, RegistrarMesaActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        cargarMesas()
+    }
+
+    private fun cargarMesas() {
+        val lista = mesaDao.listar()
+        val adapter = MesaAdapter(lista)
+        binding.recyclerMesas.adapter = adapter
+    }
+}
+package com.senati.saborapp
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.doAfterTextChanged
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.chip.Chip
+import com.senati.saborapp.databinding.ActivityListaPlatosBinding
+
+class ListaPlatosActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityListaPlatosBinding
+    private lateinit var platoDao: PlatoDao
+    private var categoriaSeleccionada: String = "Todos"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityListaPlatosBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        platoDao = PlatoDao(this)
+
+        binding.recyclerPlatos.layoutManager = LinearLayoutManager(this)
+
+        // Buscador de platos (HU-07, CA3)
+        binding.etBuscarPlato.doAfterTextChanged {
+            cargarPlatos()
+        }
+
+        // SelecciÃ³n de chips de categorÃ­a
+        binding.chipGroupCategorias.setOnCheckedStateChangeListener { group, checkedIds ->
+            if (checkedIds.isNotEmpty()) {
+                val chip = group.findViewById<Chip>(checkedIds[0])
+                categoriaSeleccionada = chip?.text?.toString() ?: "Todos"
+            } else {
+                categoriaSeleccionada = "Todos"
+            }
+            cargarPlatos()
+        }
+
+        // BotÃ³n flotante para registrar un plato nuevo
+        binding.fabAgregarPlato.setOnClickListener {
+            val intent = Intent(this, RegistrarPlatoActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        cargarPlatos()
+    }
+
+    private fun cargarPlatos() {
+        val filtroNombre = binding.etBuscarPlato.text.toString().trim()
+        val lista = platoDao.listar(filtroNombre, categoriaSeleccionada)
+
+        val adapter = PlatoAdapter(lista) { plato ->
+            // Abrir el formulario en modo ediciÃ³n (HU-07, CA1)
+            val intent = Intent(this, RegistrarPlatoActivity::class.java).apply {
+                putExtra("EXTRA_PLATO_ID", plato.id)
+            }
+            startActivity(intent)
+        }
+        binding.recyclerPlatos.adapter = adapter
+    }
+}
+package com.senati.saborapp
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.senati.saborapp.databinding.ActivityMainBinding
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var usuarioDao: UsuarioDao
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Verificar sesiÃ³n recordada en SharedPreferences (HU-12, CA1)
+        val prefs = getSharedPreferences("SaborAppPrefs", Context.MODE_PRIVATE)
+        val isLoggedIn = prefs.getBoolean("is_logged_in", false)
+        if (isLoggedIn) {
+            val usuarioGuardado = prefs.getString("usuario", "admin") ?: "admin"
+            val rolGuardado = prefs.getString("rol", "ADMIN") ?: "ADMIN"
+
+            val intent = Intent(this, MainActivity2::class.java).apply {
+                putExtra("EXTRA_USUARIO", usuarioGuardado)
+                putExtra("EXTRA_ROL", rolGuardado)
+            }
+            startActivity(intent)
+            finish()
+            return
+        }
+
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        usuarioDao = UsuarioDao(this)
+
+        binding.btnIngresar.setOnClickListener {
+            val usuarioInput = binding.etUsuario.text.toString().trim()
+            val claveInput = binding.etClave.text.toString().trim()
+
+            var isValid = true
+
+            // Validar si el campo usuario estÃ¡ vacÃ­o (CA1)
+            if (usuarioInput.isEmpty()) {
+                binding.etUsuario.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etUsuario.error = null
+            }
+
+            // Validar si el campo contraseÃ±a estÃ¡ vacÃ­o (CA1)
+            if (claveInput.isEmpty()) {
+                binding.etClave.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etClave.error = null
+            }
+
+            if (isValid) {
+                // Consulta parametrizada a la BD SQLite (HU-04, CA2)
+                val userLogged = usuarioDao.validarUsuario(usuarioInput, claveInput)
+                if (userLogged != null) {
+                    Toast.makeText(this, "Bienvenido ${userLogged.usuario}", Toast.LENGTH_SHORT).show()
+
+                    // Guardar sesiÃ³n recordada (HU-12, CA1)
+                    prefs.edit()
+                        .putBoolean("is_logged_in", true)
+                        .putString("usuario", userLogged.usuario)
+                        .putString("rol", userLogged.rol)
+                        .apply()
+
+                    val intent = Intent(this, MainActivity2::class.java).apply {
+                        putExtra("EXTRA_USUARIO", userLogged.usuario)
+                        putExtra("EXTRA_ROL", userLogged.rol)
+                    }
+                    startActivity(intent)
+                    finish()
+                } else {
+                    // Credenciales incorrectas (CA3)
+                    Toast.makeText(this, getString(R.string.error_credenciales), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+}
+package com.senati.saborapp
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import androidx.appcompat.app.AppCompatActivity
+import com.senati.saborapp.databinding.ActivityMain2Binding
+
+class MainActivity2 : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMain2Binding
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityMain2Binding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        val usuario = intent.getStringExtra("EXTRA_USUARIO") ?: "admin"
+        val rol = intent.getStringExtra("EXTRA_ROL") ?: "ADMIN"
+
+        binding.tvBienvenida.text = "Hola, $usuario"
+        val rolTexto = if (rol.equals("ADMIN", ignoreCase = true)) "Administrador" else "Mozo"
+        binding.tvRol.text = "Rol: $rolTexto"
+
+        // Ocultar Reportes si el usuario tiene rol MOZO (HU-02, CA4)
+        if (rol.equals("MOZO", ignoreCase = true)) {
+            binding.btnReportes.visibility = View.GONE
+        } else {
+            binding.btnReportes.visibility = View.VISIBLE
+        }
+
+        // Abrir el catÃ¡logo de platos (HU-05, HU-07)
+        binding.btnPlatos.setOnClickListener {
+            val intent = Intent(this, ListaPlatosActivity::class.java)
+            startActivity(intent)
+        }
+
+        // Abrir el listado de mesas (HU-06)
+        binding.btnMesas.setOnClickListener {
+            val intent = Intent(this, ListaMesasActivity::class.java)
+            startActivity(intent)
+        }
+
+        // Abrir el mÃ³dulo de pedidos (HU-08, HU-09)
+        binding.btnPedidos.setOnClickListener {
+            val intent = Intent(this, PedidoActivity::class.java)
+            startActivity(intent)
+        }
+
+        // Abrir Reportes de ventas (HU-10)
+        binding.btnReportes.setOnClickListener {
+            val intent = Intent(this, ReportesActivity::class.java)
+            startActivity(intent)
+        }
+
+        // BotÃ³n Salir: Limpia la sesiÃ³n recordada (HU-12, CA2)
+        binding.btnSalir.setOnClickListener {
+            val prefs = getSharedPreferences("SaborAppPrefs", Context.MODE_PRIVATE)
+            prefs.edit().clear().apply()
+
+            val intent = Intent(this, MainActivity::class.java)
+            startActivity(intent)
+            finish()
+        }
+    }
+}
+package com.senati.saborapp
+
+data class Mesa(
+    val id: Int,
+    val numero: Int,
+    val capacidad: Int,
+    val estado: String // "LIBRE" o "OCUPADA"
+)
+package com.senati.saborapp
+
+import android.graphics.Color
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import com.senati.saborapp.databinding.ItemMesaBinding
+
+class MesaAdapter(private val listaMesas: List<Mesa>) : RecyclerView.Adapter<MesaAdapter.MesaViewHolder>() {
+
+    inner class MesaViewHolder(val binding: ItemMesaBinding) : RecyclerView.ViewHolder(binding.root)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MesaViewHolder {
+        val binding = ItemMesaBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return MesaViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: MesaViewHolder, position: Int) {
+        val mesa = listaMesas[position]
+        holder.binding.tvNumeroMesa.text = "Mesa ${mesa.numero}"
+        holder.binding.tvCapacidadMesa.text = "Cap: ${mesa.capacidad} pers."
+        holder.binding.tvEstadoMesa.text = mesa.estado
+
+        if (mesa.estado.equals("OCUPADA", ignoreCase = true)) {
+            holder.binding.tvEstadoMesa.setTextColor(Color.parseColor("#D32F2F"))
+        } else {
+            holder.binding.tvEstadoMesa.setTextColor(Color.parseColor("#2E7D32"))
+        }
+    }
+
+    override fun getItemCount(): Int = listaMesas.size
+}
+package com.senati.saborapp
+
+import android.content.ContentValues
+import android.content.Context
+import android.database.Cursor
+import android.database.sqlite.SQLiteConstraintException
+
+class MesaDao(context: Context) {
+    private val dbHelper = DBHelper(context)
+
+    // Registrar una mesa validando si el nÃºmero ya existe (HU-06, CA1)
+    fun insertar(mesa: Mesa): String {
+        val db = dbHelper.writableDatabase
+        return try {
+            val values = ContentValues().apply {
+                put("numero", mesa.numero)
+                put("capacidad", mesa.capacidad)
+                put("estado", "LIBRE") // Toda mesa nueva nace en estado LIBRE (CA3)
+            }
+            val resultado = db.insert("mesa", null, values)
+            db.close()
+            if (resultado != -1L) "OK" else "Error al registrar la mesa"
+        } catch (e: SQLiteConstraintException) {
+            db.close()
+            "La mesa ya existe" // Criterio de aceptaciÃ³n HU-06
+        }
+    }
+
+    // Listar las mesas ordenadas por su nÃºmero
+    fun listar(): List<Mesa> {
+        val lista = mutableListOf<Mesa>()
+        val db = dbHelper.readableDatabase
+        val cursor: Cursor = db.rawQuery("select * from mesa order by numero", null)
+
+        if (cursor.moveToFirst()) {
+            do {
+                val id = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
+                val numero = cursor.getInt(cursor.getColumnIndexOrThrow("numero"))
+                val capacidad = cursor.getInt(cursor.getColumnIndexOrThrow("capacidad"))
+                val estado = cursor.getString(cursor.getColumnIndexOrThrow("estado"))
+
+                lista.add(Mesa(id, numero, capacidad, estado))
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        db.close()
+        return lista
+    }
+}
+package com.senati.saborapp
+
+import android.graphics.Color
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import com.senati.saborapp.databinding.ItemMesaBinding
+
+class MesaSelectAdapter(
+    private val listaMesas: List<Mesa>,
+    private val idMesaSeleccionada: Int,
+    private val onMesaSelected: (Mesa) -> Unit
+) : RecyclerView.Adapter<MesaSelectAdapter.MesaViewHolder>() {
+
+    inner class MesaViewHolder(val binding: ItemMesaBinding) : RecyclerView.ViewHolder(binding.root)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MesaViewHolder {
+        val binding = ItemMesaBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return MesaViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: MesaViewHolder, position: Int) {
+        val mesa = listaMesas[position]
+        holder.binding.tvNumeroMesa.text = "Mesa ${mesa.numero}"
+        holder.binding.tvCapacidadMesa.text = "${mesa.capacidad} pers."
+        holder.binding.tvEstadoMesa.text = mesa.estado
+
+        // Colores segÃºn estado (HU-08, CA1)
+        if (mesa.estado.equals("OCUPADA", ignoreCase = true)) {
+            holder.binding.tvEstadoMesa.setTextColor(Color.parseColor("#D32F2F"))
+        } else {
+            holder.binding.tvEstadoMesa.setTextColor(Color.parseColor("#2E7D32"))
+        }
+
+        // Resaltado de la mesa seleccionada
+        if (mesa.id == idMesaSeleccionada) {
+            holder.binding.root.setStrokeColor(Color.parseColor("#E64A19"))
+            holder.binding.root.strokeWidth = 4
+        } else {
+            holder.binding.root.setStrokeColor(Color.parseColor("#E0E0E0"))
+            holder.binding.root.strokeWidth = 1
+        }
+
+        holder.itemView.setOnClickListener {
+            onMesaSelected(mesa)
+        }
+    }
+
+    override fun getItemCount(): Int = listaMesas.size
+}
+package com.senati.saborapp
+
+data class Pedido(
+    val id: Int = 0,
+    val idMesa: Int,
+    val fecha: String,
+    val estado: String, // "ABIERTO" o "CERRADO"
+    val total: Double = 0.0
+)
+package com.senati.saborapp
+
+import android.content.Intent
+import android.os.Bundle
+import android.widget.ArrayAdapter
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.senati.saborapp.databinding.ActivityPedidoBinding
+
+class PedidoActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityPedidoBinding
+    private lateinit var mesaDao: MesaDao
+    private lateinit var platoDao: PlatoDao
+    private lateinit var pedidoDao: PedidoDao
+
+    private var mesaSeleccionada: Mesa? = null
+    private var platosDisponibles: List<Plato> = emptyList()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityPedidoBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        mesaDao = MesaDao(this)
+        platoDao = PlatoDao(this)
+        pedidoDao = PedidoDao(this)
+
+        binding.recyclerMesasPedido.layoutManager = GridLayoutManager(this, 3)
+        binding.recyclerDetallePedido.layoutManager = LinearLayoutManager(this)
+
+        cargarSpinnerPlatos()
+
+        // BotÃ³n Agregar Plato
+        binding.btnAgregarPlato.setOnClickListener {
+            val mesa = mesaSeleccionada
+            if (mesa == null) {
+                Toast.makeText(this, "Seleccione una mesa", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val posPlato = binding.spPlatosDisponibles.selectedItemPosition
+            if (posPlato < 0 || posPlato >= platosDisponibles.size) {
+                Toast.makeText(this, "Seleccione un plato disponible", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val plato = platosDisponibles[posPlato]
+
+            val cantStr = binding.etCantidadPlato.text.toString().trim()
+            val cantidad = cantStr.toIntOrNull()
+            if (cantidad == null || cantidad <= 0) {
+                binding.etCantidadPlato.error = "Cantidad invÃ¡lida"
+                return@setOnClickListener
+            }
+
+            // TransacciÃ³n: Guardar plato en el pedido (HU-08, CA2, CA3, CA4)
+            val exito = pedidoDao.agregarPlatoAPedido(mesa.id, plato.id, cantidad)
+            if (exito) {
+                Toast.makeText(this, "Plato agregado", Toast.LENGTH_SHORT).show()
+                binding.etCantidadPlato.setText("1")
+                cargarMesas()
+                seleccionarMesa(mesaDao.listar().find { it.id == mesa.id } ?: mesa)
+            } else {
+                Toast.makeText(this, "Error al agregar el plato", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // BotÃ³n Ver Cuenta (HU-09, CA1)
+        binding.btnVerCuenta.setOnClickListener {
+            val mesa = mesaSeleccionada
+            if (mesa == null) {
+                Toast.makeText(this, "Seleccione una mesa", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val intent = Intent(this, CuentaActivity::class.java).apply {
+                putExtra("EXTRA_MESA_ID", mesa.id)
+                putExtra("EXTRA_MESA_NUMERO", mesa.numero)
+            }
+            startActivity(intent)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        cargarMesas()
+        cargarSpinnerPlatos()
+        mesaSeleccionada?.let { m ->
+            val mesaActualizada = mesaDao.listar().find { it.id == m.id }
+            if (mesaActualizada != null) {
+                seleccionarMesa(mesaActualizada)
+            }
+        }
+    }
+
+    private fun cargarMesas() {
+        val listaMesas = mesaDao.listar()
+        val adapter = MesaSelectAdapter(listaMesas, mesaSeleccionada?.id ?: -1) { mesa ->
+            seleccionarMesa(mesa)
+        }
+        binding.recyclerMesasPedido.adapter = adapter
+    }
+
+    private fun cargarSpinnerPlatos() {
+        // Solo platos con disponible = 1 (HU-07, CA4)
+        platosDisponibles = platoDao.listarDisponibles()
+        val nombresPlatos = platosDisponibles.map { "${it.nombre} (S/ %.2f)".format(it.precio) }
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, nombresPlatos)
+        binding.spPlatosDisponibles.adapter = adapter
+    }
+
+    private fun seleccionarMesa(mesa: Mesa) {
+        mesaSeleccionada = mesa
+        binding.tvMesaSeleccionada.text = "Mesa ${mesa.numero} Â· ${mesa.estado.lowercase()}"
+
+        cargarMesas() // Para refrescar borde de selecciÃ³n
+
+        val pedidoAbierto = pedidoDao.obtenerPedidoAbiertoPorMesa(mesa.id)
+        if (pedidoAbierto != null) {
+            val detalles = pedidoDao.listarDetallesPedido(pedidoAbierto.id)
+            binding.recyclerDetallePedido.adapter = DetallePedidoAdapter(detalles)
+            binding.tvTotalPedido.text = "S/ %.2f".format(pedidoAbierto.total)
+        } else {
+            binding.recyclerDetallePedido.adapter = DetallePedidoAdapter(emptyList())
+            binding.tvTotalPedido.text = "S/ 0.00"
+        }
+    }
+}
+package com.senati.saborapp
+
+import android.content.ContentValues
+import android.content.Context
+import android.database.Cursor
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class PedidoDao(context: Context) {
+    private val dbHelper = DBHelper(context)
+
+    // Obtener pedido ABIERTO para una mesa determinada
+    fun obtenerPedidoAbiertoPorMesa(idMesa: Int): Pedido? {
+        val db = dbHelper.readableDatabase
+        val cursor: Cursor = db.rawQuery(
+            "SELECT * FROM pedido WHERE id_mesa = ? AND estado = 'ABIERTO'",
+            arrayOf(idMesa.toString())
+        )
+        var pedido: Pedido? = null
+        if (cursor.moveToFirst()) {
+            val id = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
+            val fecha = cursor.getString(cursor.getColumnIndexOrThrow("fecha"))
+            val estado = cursor.getString(cursor.getColumnIndexOrThrow("estado"))
+            val total = cursor.getDouble(cursor.getColumnIndexOrThrow("total"))
+            pedido = Pedido(id, idMesa, fecha, estado, total)
+        }
+        cursor.close()
+        db.close()
+        return pedido
+    }
+
+    // Agregar plato al pedido usando una transacciÃ³n de SQLite (HU-08, CA2, CA3, CA4)
+    fun agregarPlatoAPedido(idMesa: Int, idPlato: Int, cantidad: Int): Boolean {
+        val db = dbHelper.writableDatabase
+        db.beginTransaction()
+        try {
+            // 1. Obtener precio actual del plato
+            val cursorPlato = db.rawQuery("SELECT precio FROM plato WHERE id = ?", arrayOf(idPlato.toString()))
+            if (!cursorPlato.moveToFirst()) {
+                cursorPlato.close()
+                return false
+            }
+            val precioUnit = cursorPlato.getDouble(0)
+            cursorPlato.close()
+
+            // 2. Obtener o crear el pedido ABIERTO para la mesa
+            var idPedido: Long = -1
+            val cursorPedido = db.rawQuery(
+                "SELECT id FROM pedido WHERE id_mesa = ? AND estado = 'ABIERTO'",
+                arrayOf(idMesa.toString())
+            )
+            if (cursorPedido.moveToFirst()) {
+                idPedido = cursorPedido.getLong(0)
+            } else {
+                val fechaActual = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+                val valPedido = ContentValues().apply {
+                    put("id_mesa", idMesa)
+                    put("fecha", fechaActual)
+                    put("estado", "ABIERTO")
+                    put("total", 0.0)
+                }
+                idPedido = db.insert("pedido", null, valPedido)
+
+                // Cambiar estado de la mesa a OCUPADA
+                val valMesa = ContentValues().apply { put("estado", "OCUPADA") }
+                db.update("mesa", valMesa, "id = ?", arrayOf(idMesa.toString()))
+            }
+            cursorPedido.close()
+
+            if (idPedido == -1L) return false
+
+            // 3. Insertar o actualizar item en detalle_pedido
+            val subtotal = precioUnit * cantidad
+            val cursorDetalle = db.rawQuery(
+                "SELECT id, cantidad FROM detalle_pedido WHERE id_pedido = ? AND id_plato = ?",
+                arrayOf(idPedido.toString(), idPlato.toString())
+            )
+            if (cursorDetalle.moveToFirst()) {
+                val idDetalle = cursorDetalle.getLong(0)
+                val cantExistente = cursorDetalle.getInt(1)
+                val nuevaCant = cantExistente + cantidad
+                val nuevoSubtotal = precioUnit * nuevaCant
+                val valDetalle = ContentValues().apply {
+                    put("cantidad", nuevaCant)
+                    put("subtotal", nuevoSubtotal)
+                }
+                db.update("detalle_pedido", valDetalle, "id = ?", arrayOf(idDetalle.toString()))
+            } else {
+                val valDetalle = ContentValues().apply {
+                    put("id_pedido", idPedido)
+                    put("id_plato", idPlato)
+                    put("cantidad", cantidad)
+                    put("precio_unit", precioUnit)
+                    put("subtotal", subtotal)
+                }
+                db.insert("detalle_pedido", null, valDetalle)
+            }
+            cursorDetalle.close()
+
+            // 4. Recalcular total del pedido
+            val cursorTotal = db.rawQuery(
+                "SELECT SUM(subtotal) FROM detalle_pedido WHERE id_pedido = ?",
+                arrayOf(idPedido.toString())
+            )
+            var nuevoTotal = 0.0
+            if (cursorTotal.moveToFirst()) {
+                nuevoTotal = cursorTotal.getDouble(0)
+            }
+            cursorTotal.close()
+
+            val valTotal = ContentValues().apply { put("total", nuevoTotal) }
+            db.update("pedido", valTotal, "id = ?", arrayOf(idPedido.toString()))
+
+            db.setTransactionSuccessful()
+            return true
+        } catch (e: Exception) {
+            return false
+        } finally {
+            db.endTransaction()
+            db.close()
+        }
+    }
+
+    // Listar detalles del pedido con JOIN a la tabla plato
+    fun listarDetallesPedido(idPedido: Int): List<DetallePedido> {
+        val lista = mutableListOf<DetallePedido>()
+        val db = dbHelper.readableDatabase
+        val query = """
+            SELECT d.id, d.id_pedido, d.id_plato, p.nombre, d.cantidad, d.precio_unit, d.subtotal 
+            FROM detalle_pedido d 
+            INNER JOIN plato p ON d.id_plato = p.id 
+            WHERE d.id_pedido = ?
+        """.trimIndent()
+
+        val cursor: Cursor = db.rawQuery(query, arrayOf(idPedido.toString()))
+
+        if (cursor.moveToFirst()) {
+            do {
+                val id = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
+                val idPlato = cursor.getInt(cursor.getColumnIndexOrThrow("id_plato"))
+                val nombrePlato = cursor.getString(cursor.getColumnIndexOrThrow("nombre"))
+                val cantidad = cursor.getInt(cursor.getColumnIndexOrThrow("cantidad"))
+                val precioUnit = cursor.getDouble(cursor.getColumnIndexOrThrow("precio_unit"))
+                val subtotal = cursor.getDouble(cursor.getColumnIndexOrThrow("subtotal"))
+
+                lista.add(DetallePedido(id, idPedido, idPlato, nombrePlato, cantidad, precioUnit, subtotal))
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        db.close()
+        return lista
+    }
+
+    // Cerrar la cuenta de la mesa en una sola transacciÃ³n (HU-09, CA2)
+    fun cerrarCuenta(idPedido: Int, idMesa: Int): Boolean {
+        val db = dbHelper.writableDatabase
+        db.beginTransaction()
+        try {
+            val valPedido = ContentValues().apply { put("estado", "CERRADO") }
+            db.update("pedido", valPedido, "id = ?", arrayOf(idPedido.toString()))
+
+            val valMesa = ContentValues().apply { put("estado", "LIBRE") }
+            db.update("mesa", valMesa, "id = ?", arrayOf(idMesa.toString()))
+
+            db.setTransactionSuccessful()
+            return true
+        } catch (e: Exception) {
+            return false
+        } finally {
+            db.endTransaction()
+            db.close()
+        }
+    }
+}
+package com.senati.saborapp
+
+data class Plato(
+    val id: Int,
+    val nombre: String,
+    val categoria: String,
+    val precio: Double,
+    val disponible: Int // 1 para disponible, 0 para no disponible
+)
+package com.senati.saborapp
+
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import com.senati.saborapp.databinding.ItemPlatoBinding
+
+class PlatoAdapter(
+    private val listaPlatos: List<Plato>,
+    private val onItemClick: ((Plato) -> Unit)? = null
+) : RecyclerView.Adapter<PlatoAdapter.PlatoViewHolder>() {
+
+    inner class PlatoViewHolder(val binding: ItemPlatoBinding) : RecyclerView.ViewHolder(binding.root)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PlatoViewHolder {
+        val binding = ItemPlatoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return PlatoViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: PlatoViewHolder, position: Int) {
+        val plato = listaPlatos[position]
+        holder.binding.tvNombrePlato.text = plato.nombre
+        holder.binding.tvCategoriaPrecioPlato.text = "${plato.categoria} Â· S/ %.2f".format(plato.precio)
+
+        if (plato.disponible == 1) {
+            holder.binding.tvEstadoPlato.text = "Disponible"
+            holder.binding.tvEstadoPlato.setTextColor(holder.itemView.context.getColor(android.R.color.holo_green_dark))
+        } else {
+            holder.binding.tvEstadoPlato.text = "Agotado"
+            holder.binding.tvEstadoPlato.setTextColor(holder.itemView.context.getColor(android.R.color.holo_red_dark))
+        }
+
+        holder.itemView.setOnClickListener {
+            onItemClick?.invoke(plato)
+        }
+    }
+
+    override fun getItemCount(): Int = listaPlatos.size
+}
+package com.senati.saborapp
+
+import android.content.ContentValues
+import android.content.Context
+import android.database.Cursor
+import android.database.sqlite.SQLiteConstraintException
+
+class PlatoDao(context: Context) {
+    private val dbHelper = DBHelper(context)
+
+    fun insertar(plato: Plato): Boolean {
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put("nombre", plato.nombre)
+            put("categoria", plato.categoria)
+            put("precio", plato.precio)
+            put("disponible", plato.disponible)
+        }
+        val resultado = db.insert("plato", null, values)
+        db.close()
+        return resultado != -1L
+    }
+
+    fun actualizar(plato: Plato): Boolean {
+        val db = dbHelper.writableDatabase
+        val values = ContentValues().apply {
+            put("nombre", plato.nombre)
+            put("categoria", plato.categoria)
+            put("precio", plato.precio)
+            put("disponible", plato.disponible)
+        }
+        val filas = db.update("plato", values, "id = ?", arrayOf(plato.id.toString()))
+        db.close()
+        return filas > 0
+    }
+
+    fun eliminar(id: Int): String {
+        val db = dbHelper.writableDatabase
+        // Verificar antes si el plato estÃ¡ referenciado en un detalle de pedido
+        val cursor = db.rawQuery("SELECT COUNT(*) FROM detalle_pedido WHERE id_plato = ?", arrayOf(id.toString()))
+        if (cursor.moveToFirst() && cursor.getInt(0) > 0) {
+            cursor.close()
+            db.close()
+            return "No se puede eliminar: tiene pedidos"
+        }
+        cursor.close()
+
+        return try {
+            val filas = db.delete("plato", "id = ?", arrayOf(id.toString()))
+            db.close()
+            if (filas > 0) "OK" else "Error al eliminar"
+        } catch (e: SQLiteConstraintException) {
+            db.close()
+            "No se puede eliminar: tiene pedidos"
+        } catch (e: Exception) {
+            db.close()
+            "No se puede eliminar: tiene pedidos"
+        }
+    }
+
+    fun obtener(id: Int): Plato? {
+        val db = dbHelper.readableDatabase
+        val cursor: Cursor = db.rawQuery("SELECT * FROM plato WHERE id = ?", arrayOf(id.toString()))
+        var plato: Plato? = null
+        if (cursor.moveToFirst()) {
+            val nombre = cursor.getString(cursor.getColumnIndexOrThrow("nombre"))
+            val categoria = cursor.getString(cursor.getColumnIndexOrThrow("categoria"))
+            val precio = cursor.getDouble(cursor.getColumnIndexOrThrow("precio"))
+            val disponible = cursor.getInt(cursor.getColumnIndexOrThrow("disponible"))
+            plato = Plato(id, nombre, categoria, precio, disponible)
+        }
+        cursor.close()
+        db.close()
+        return plato
+    }
+
+    // Listar platos con filtro por nombre y categorÃ­a (HU-07, CA3)
+    fun listar(filtroNombre: String = "", categoriaFiltro: String = "Todos"): List<Plato> {
+        val lista = mutableListOf<Plato>()
+        val db = dbHelper.readableDatabase
+
+        var query = "SELECT * FROM plato WHERE 1=1"
+        val params = mutableListOf<String>()
+
+        if (filtroNombre.isNotBlank()) {
+            query += " AND nombre LIKE ?"
+            params.add("%$filtroNombre%")
+        }
+
+        if (categoriaFiltro != "Todos" && categoriaFiltro.isNotBlank()) {
+            query += " AND categoria = ?"
+            params.add(categoriaFiltro)
+        }
+
+        query += " ORDER BY categoria, nombre"
+
+        val cursor: Cursor = db.rawQuery(query, params.toTypedArray())
+
+        if (cursor.moveToFirst()) {
+            do {
+                val id = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
+                val nombre = cursor.getString(cursor.getColumnIndexOrThrow("nombre"))
+                val categoria = cursor.getString(cursor.getColumnIndexOrThrow("categoria"))
+                val precio = cursor.getDouble(cursor.getColumnIndexOrThrow("precio"))
+                val disponible = cursor.getInt(cursor.getColumnIndexOrThrow("disponible"))
+
+                lista.add(Plato(id, nombre, categoria, precio, disponible))
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        db.close()
+        return lista
+    }
+
+    // Listar Ãºnicamente los platos disponibles (HU-07, CA4)
+    fun listarDisponibles(): List<Plato> {
+        val lista = mutableListOf<Plato>()
+        val db = dbHelper.readableDatabase
+        val cursor: Cursor = db.rawQuery("SELECT * FROM plato WHERE disponible = 1 ORDER BY categoria, nombre", null)
+
+        if (cursor.moveToFirst()) {
+            do {
+                val id = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
+                val nombre = cursor.getString(cursor.getColumnIndexOrThrow("nombre"))
+                val categoria = cursor.getString(cursor.getColumnIndexOrThrow("categoria"))
+                val precio = cursor.getDouble(cursor.getColumnIndexOrThrow("precio"))
+
+                lista.add(Plato(id, nombre, categoria, precio, 1))
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        db.close()
+        return lista
+    }
+}
+package com.senati.saborapp
+
+import android.os.Bundle
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.senati.saborapp.databinding.ActivityRegistrarMesaBinding
+
+class RegistrarMesaActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityRegistrarMesaBinding
+    private lateinit var mesaDao: MesaDao
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityRegistrarMesaBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        mesaDao = MesaDao(this)
+
+        binding.btnGuardarMesa.setOnClickListener {
+            val numeroStr = binding.etNumeroMesa.text.toString().trim()
+            val capacidadStr = binding.etCapacidadMesa.text.toString().trim()
+
+            var isValid = true
+
+            if (numeroStr.isEmpty()) {
+                binding.etNumeroMesa.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etNumeroMesa.error = null
+            }
+
+            if (capacidadStr.isEmpty()) {
+                binding.etCapacidadMesa.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etCapacidadMesa.error = null
+            }
+
+            if (!isValid) return@setOnClickListener
+
+            val numero = numeroStr.toIntOrNull()
+            val capacidad = capacidadStr.toIntOrNull()
+
+            if (numero == null || numero <= 0) {
+                binding.etNumeroMesa.error = "NÃºmero invÃ¡lido"
+                return@setOnClickListener
+            }
+
+            // CA2: Dado que la capacidad no estÃ¡ entre 1 y 12, cuando guardo, entonces se muestra Â«Capacidad invÃ¡lidaÂ».
+            if (capacidad == null || capacidad !in 1..12) {
+                binding.etCapacidadMesa.error = "Capacidad invÃ¡lida"
+                Toast.makeText(this, "Capacidad invÃ¡lida", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // CA3: Registro de mesa nueva en estado LIBRE
+            val nuevaMesa = Mesa(0, numero, capacidad, "LIBRE")
+            val res = mesaDao.insertar(nuevaMesa)
+
+            if (res == "OK") {
+                Toast.makeText(this, "Mesa registrada exitosamente", Toast.LENGTH_SHORT).show()
+                finish()
+            } else {
+                // CA1: Dado que registro un nÃºmero de mesa que ya existe, cuando pulso Â«GuardarÂ», entonces aparece Â«La mesa ya existeÂ».
+                Toast.makeText(this, res, Toast.LENGTH_SHORT).show()
+                if (res == "La mesa ya existe") {
+                    binding.etNumeroMesa.error = "La mesa ya existe"
+                }
+            }
+        }
+    }
+}
+package com.senati.saborapp
+
+import android.os.Bundle
+import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import com.senati.saborapp.databinding.ActivityRegistrarPlatoBinding
+
+class RegistrarPlatoActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityRegistrarPlatoBinding
+    private lateinit var platoDao: PlatoDao
+    private var platoId: Int = -1
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityRegistrarPlatoBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        platoDao = PlatoDao(this)
+
+        // Configurar Spinner de categorÃ­as
+        val categorias = arrayOf("Entradas", "Fondos", "Bebidas", "Postres")
+        val spinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, categorias)
+        binding.spCategoriaPlato.adapter = spinnerAdapter
+
+        // Verificar si viene en modo EdiciÃ³n (HU-07, CA1)
+        platoId = intent.getIntExtra("EXTRA_PLATO_ID", -1)
+        if (platoId != -1) {
+            val platoExistente = platoDao.obtener(platoId)
+            if (platoExistente != null) {
+                binding.tvTituloPlato.text = "Editar plato"
+                binding.etNombrePlato.setText(platoExistente.nombre)
+                binding.etPrecioPlato.setText(platoExistente.precio.toString())
+                binding.swDisponible.isChecked = platoExistente.disponible == 1
+                binding.btnGuardarPlato.text = "Actualizar"
+                binding.btnEliminarPlato.visibility = View.VISIBLE
+
+                val posIndex = categorias.indexOf(platoExistente.categoria)
+                if (posIndex >= 0) {
+                    binding.spCategoriaPlato.setSelection(posIndex)
+                }
+            }
+        }
+
+        binding.btnGuardarPlato.setOnClickListener {
+            val nombre = binding.etNombrePlato.text.toString().trim()
+            val categoria = binding.spCategoriaPlato.selectedItem?.toString() ?: "Fondos"
+            val precioStr = binding.etPrecioPlato.text.toString().trim()
+            val disponible = if (binding.swDisponible.isChecked) 1 else 0
+
+            var isValid = true
+
+            if (nombre.isEmpty()) {
+                binding.etNombrePlato.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etNombrePlato.error = null
+            }
+
+            if (precioStr.isEmpty()) {
+                binding.etPrecioPlato.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etPrecioPlato.error = null
+            }
+
+            if (!isValid) return@setOnClickListener
+
+            val precio = precioStr.toDoubleOrNull()
+            if (precio == null || precio <= 0) {
+                binding.etPrecioPlato.error = "Precio invÃ¡lido"
+                Toast.makeText(this, "Precio invÃ¡lido", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (platoId != -1) {
+                // Actualizar plato existente
+                val platoActualizar = Plato(platoId, nombre, categoria, precio, disponible)
+                val exito = platoDao.actualizar(platoActualizar)
+                if (exito) {
+                    Toast.makeText(this, "Plato actualizado exitosamente", Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    Toast.makeText(this, "Error al actualizar el plato", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                // Registrar nuevo plato
+                val nuevoPlato = Plato(0, nombre, categoria, precio, disponible)
+                val exito = platoDao.insertar(nuevoPlato)
+                if (exito) {
+                    Toast.makeText(this, "Plato registrado exitosamente", Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    Toast.makeText(this, "Error al registrar el plato", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        // Eliminar plato con diÃ¡logo de confirmaciÃ³n (HU-07, CA2)
+        binding.btnEliminarPlato.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Eliminar plato")
+                .setMessage("Â¿EstÃ¡ seguro de que desea eliminar este plato?")
+                .setPositiveButton("Eliminar") { _, _ ->
+                    val resultado = platoDao.eliminar(platoId)
+                    if (resultado == "OK") {
+                        Toast.makeText(this, "Plato eliminado exitosamente", Toast.LENGTH_SHORT).show()
+                        finish()
+                    } else {
+                        // Muestra "No se puede eliminar: tiene pedidos"
+                        Toast.makeText(this, resultado, Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
+    }
+}
+package com.senati.saborapp
+
+import android.content.Context
+import android.database.Cursor
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class ReporteDao(context: Context) {
+    private val dbHelper = DBHelper(context)
+
+    private fun getFechaHoy(): String {
+        return SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
+    }
+
+    fun ventaDelDia(): Double {
+        val db = dbHelper.readableDatabase
+        val fechaHoy = getFechaHoy()
+        val cursor: Cursor = db.rawQuery(
+            "SELECT SUM(total) FROM pedido WHERE estado = 'CERRADO' AND substr(fecha, 1, 10) = ?",
+            arrayOf(fechaHoy)
+        )
+        var total = 0.0
+        if (cursor.moveToFirst()) {
+            total = cursor.getDouble(0)
+        }
+        cursor.close()
+        db.close()
+        return total
+    }
+
+    fun totalPedidosDelDia(): Int {
+        val db = dbHelper.readableDatabase
+        val fechaHoy = getFechaHoy()
+        val cursor: Cursor = db.rawQuery(
+            "SELECT COUNT(*) FROM pedido WHERE estado = 'CERRADO' AND substr(fecha, 1, 10) = ?",
+            arrayOf(fechaHoy)
+        )
+        var cantidad = 0
+        if (cursor.moveToFirst()) {
+            cantidad = cursor.getInt(0)
+        }
+        cursor.close()
+        db.close()
+        return cantidad
+    }
+
+    fun ticketPromedioDelDia(): Double {
+        val ventas = ventaDelDia()
+        val pedidos = totalPedidosDelDia()
+        return if (pedidos > 0) ventas / pedidos else 0.0
+    }
+
+    fun topPlatosDelDia(): List<TopPlato> {
+        val lista = mutableListOf<TopPlato>()
+        val db = dbHelper.readableDatabase
+        val fechaHoy = getFechaHoy()
+        val query = """
+            SELECT p.nombre, SUM(d.cantidad) AS total_cant 
+            FROM detalle_pedido d 
+            INNER JOIN pedido pe ON d.id_pedido = pe.id 
+            INNER JOIN plato p ON d.id_plato = p.id 
+            WHERE pe.estado = 'CERRADO' AND substr(pe.fecha, 1, 10) = ? 
+            GROUP BY p.id, p.nombre 
+            ORDER BY total_cant DESC 
+            LIMIT 5
+        """.trimIndent()
+
+        val cursor: Cursor = db.rawQuery(query, arrayOf(fechaHoy))
+        if (cursor.moveToFirst()) {
+            do {
+                val nombre = cursor.getString(cursor.getColumnIndexOrThrow("nombre"))
+                val cantidad = cursor.getInt(cursor.getColumnIndexOrThrow("total_cant"))
+                lista.add(TopPlato(nombre, cantidad))
+            } while (cursor.moveToNext())
+        }
+        cursor.close()
+        db.close()
+        return lista
+    }
+}
+package com.senati.saborapp
+
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.senati.saborapp.databinding.ActivityReportesBinding
+
+class ReportesActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityReportesBinding
+    private lateinit var reporteDao: ReporteDao
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        binding = ActivityReportesBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        reporteDao = ReporteDao(this)
+
+        binding.recyclerTopPlatos.layoutManager = LinearLayoutManager(this)
+
+        cargarReporte()
+
+        // Compartir resumen por Intent (HU-10)
+        binding.btnCompartirResumen.setOnClickListener {
+            val totalVentas = reporteDao.ventaDelDia()
+            val totalPedidos = reporteDao.totalPedidosDelDia()
+            val ticketPromedio = reporteDao.ticketPromedioDelDia()
+            val topPlatos = reporteDao.topPlatosDelDia()
+
+            val sb = StringBuilder()
+            sb.append("PollerÃ­a El Buen Sabor - Resumen de Ventas de Hoy\n")
+            sb.append("Total Ventas: S/ %.2f\n".format(totalVentas))
+            sb.append("Total Pedidos: $totalPedidos\n")
+            sb.append("Ticket Promedio: S/ %.2f\n\n".format(ticketPromedio))
+            sb.append("Platos mÃ¡s pedidos:\n")
+            if (topPlatos.isEmpty()) {
+                sb.append("Sin ventas hoy")
+            } else {
+                for (p in topPlatos) {
+                    sb.append("- ${p.nombre}: ${p.cantidad} und.\n")
+                }
+            }
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, sb.toString())
+            }
+            startActivity(Intent.createChooser(shareIntent, "Compartir resumen de ventas"))
+        }
+    }
+
+    private fun cargarReporte() {
+        val ventas = reporteDao.ventaDelDia()
+        val pedidos = reporteDao.totalPedidosDelDia()
+        val ticketPromedio = reporteDao.ticketPromedioDelDia()
+        val topPlatos = reporteDao.topPlatosDelDia()
+
+        binding.tvVentaHoy.text = "S/ %.2f".format(ventas)
+        binding.tvCantidadPedidosHoy.text = pedidos.toString()
+        binding.tvTicketPromedio.text = "S/ %.2f".format(ticketPromedio)
+
+        // HU-10, CA3: Si no hay ventas hoy, muestra "Sin ventas hoy"
+        if (topPlatos.isEmpty()) {
+            binding.tvSinVentasHoy.visibility = View.VISIBLE
+            binding.recyclerTopPlatos.adapter = TopPlatoAdapter(emptyList(), 0)
+        } else {
+            binding.tvSinVentasHoy.visibility = View.GONE
+            val maxCantidad = topPlatos.maxOf { it.cantidad }
+            binding.recyclerTopPlatos.adapter = TopPlatoAdapter(topPlatos, maxCantidad)
+        }
+    }
+}
+package com.senati.saborapp
+
+data class TopPlato(
+    val nombre: String,
+    val cantidad: Int
+)
+package com.senati.saborapp
+
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import com.senati.saborapp.databinding.ItemTopPlatoBinding
+
+class TopPlatoAdapter(
+    private val lista: List<TopPlato>,
+    private val maxCantidad: Int
+) : RecyclerView.Adapter<TopPlatoAdapter.TopPlatoViewHolder>() {
+
+    inner class TopPlatoViewHolder(val binding: ItemTopPlatoBinding) : RecyclerView.ViewHolder(binding.root)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TopPlatoViewHolder {
+        val binding = ItemTopPlatoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        return TopPlatoViewHolder(binding)
+    }
+
+    override fun onBindViewHolder(holder: TopPlatoViewHolder, position: Int) {
+        val item = lista[position]
+        holder.binding.tvNombreTopPlato.text = item.nombre
+        holder.binding.tvCantidadTopPlato.text = item.cantidad.toString()
+        holder.binding.progressTopPlato.max = if (maxCantidad > 0) maxCantidad else 1
+        holder.binding.progressTopPlato.progress = item.cantidad
+    }
+
+    override fun getItemCount(): Int = lista.size
+}
+package com.senati.saborapp
+
+data class Usuario(
+    val id: Int,
+    val usuario: String,
+    val clave: String,
+    val rol: String
+)
+package com.senati.saborapp
+
+import android.content.Context
+import android.database.Cursor
+
+class UsuarioDao(context: Context) {
+    private val dbHelper = DBHelper(context)
+
+    fun validarUsuario(usuario: String, clave: String): Usuario? {
+        val db = dbHelper.readableDatabase
+        val cursor: Cursor = db.rawQuery(
+            "SELECT * FROM usuario WHERE usuario = ? AND clave = ?",
+            arrayOf(usuario, clave)
+        )
+        var user: Usuario? = null
+        if (cursor.moveToFirst()) {
+            val id = cursor.getInt(cursor.getColumnIndexOrThrow("id"))
+            val userStr = cursor.getString(cursor.getColumnIndexOrThrow("usuario"))
+            val passStr = cursor.getString(cursor.getColumnIndexOrThrow("clave"))
+            val rolStr = cursor.getString(cursor.getColumnIndexOrThrow("rol"))
+            user = Usuario(id, userStr, passStr, rolStr)
+        }
+        cursor.close()
+        db.close()
+        return user
+    }
+}
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape>
+            <corners android:radius="6dp" />
+            <solid android:color="#EEEEEE" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape>
+                <corners android:radius="6dp" />
+                <solid android:color="@color/naranja_sabor" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#3DDC84"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M9,0L9,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,0L19,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,0L29,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,0L39,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,0L49,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,0L59,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,0L69,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,0L79,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M89,0L89,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M99,0L99,108"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,9L108,9"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,19L108,19"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,29L108,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,39L108,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,49L108,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,59L108,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,69L108,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,79L108,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,89L108,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M0,99L108,99"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,29L89,29"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,39L89,39"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,49L89,49"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,59L89,59"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,69L89,69"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M19,79L89,79"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M29,19L29,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,19L39,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M49,19L49,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M59,19L59,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M69,19L69,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M79,19L79,89"
+        android:strokeWidth="0.8"
+        android:strokeColor="#33FFFFFF" />
+</vector>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M31,63.928c0,0 6.4,-11 12.1,-13.1c7.2,-2.6 26,-1.4 26,-1.4l38.1,38.1L107,108.928l-32,-1L31,63.928z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="85.84757"
+                android:endY="92.4963"
+                android:startX="42.9492"
+                android:startY="49.59793"
+                android:type="linear">
+                <item
+                    android:color="#44000000"
+                    android:offset="0.0" />
+                <item
+                    android:color="#00000000"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="nonZero"
+        android:pathData="M65.3,45.828l3.8,-6.6c0.2,-0.4 0.1,-0.9 -0.3,-1.1c-0.4,-0.2 -0.9,-0.1 -1.1,0.3l-3.9,6.7c-6.3,-2.8 -13.4,-2.8 -19.7,0l-3.9,-6.7c-0.2,-0.4 -0.7,-0.5 -1.1,-0.3C38.8,38.328 38.7,38.828 38.9,39.228l3.8,6.6C36.2,49.428 31.7,56.028 31,63.928h46C76.3,56.028 71.8,49.428 65.3,45.828zM43.4,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2c-0.3,-0.7 -0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C45.3,56.528 44.5,57.328 43.4,57.328L43.4,57.328zM64.6,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2s-0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C66.5,56.528 65.6,57.328 64.6,57.328L64.6,57.328z"
+        android:strokeWidth="1"
+        android:strokeColor="#00000000" />
+</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:id="@+id/tvTituloCuenta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Cuenta Â· Mesa"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+    <TextView
+        android:id="@+id/tvSubtituloCuenta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pedido #"
+        android:textSize="14sp"
+        android:textColor="#757575"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Lista de items consumidos -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerDetalleCuenta"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Total de la cuenta -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="24dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Total"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/black" />
+
+        <TextView
+            android:id="@+id/tvTotalCuenta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="S/ 0.00"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/naranja_sabor" />
+    </LinearLayout>
+
+    <!-- BotÃ³n Cerrar Cuenta (HU-09) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCerrarCuenta"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Cerrar cuenta"
+        android:layout_marginBottom="12dp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <!-- BotÃ³n Compartir por WhatsApp (HU-11, Sprint 4) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCompartirWhatsApp"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Compartir por WhatsApp"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        app:strokeColor="@color/naranja_sabor"
+        android:textColor="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fondo_gris">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Listado de Mesas"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/black"
+            android:layout_marginBottom="16dp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerMesas"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabAgregarMesa"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="24dp"
+        android:contentDescription="Agregar mesa"
+        app:backgroundTint="@color/naranja_sabor"
+        app:tint="@color/white"
+        android:src="@android:drawable/ic_input_add" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fondo_gris">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Lista de platos"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/black"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Buscador de platos (HU-07, CA3) -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            app:startIconDrawable="@android:drawable/ic_menu_search">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etBuscarPlato"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Buscar plato"
+                android:inputType="text"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Filtros por categorÃ­a (Prototipo P1-03) -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:layout_marginBottom="12dp">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupCategorias"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipTodos"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="Todos" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipEntradas"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Entradas" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipFondos"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Fondos" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipBebidas"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Bebidas" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chipPostres"
+                    style="@style/Widget.MaterialComponents.Chip.Choice"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Postres" />
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerPlatos"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabAgregarPlato"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="24dp"
+        android:contentDescription="Agregar plato"
+        app:backgroundTint="@color/naranja_sabor"
+        app:tint="@color/white"
+        android:src="@android:drawable/ic_input_add" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="24dp"
+    android:background="@color/white"
+    tools:context=".MainActivity">
+
+    <!-- CÃ­rculo con la inicial del logo (Prototipo P1-01) -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginTop="32dp"
+        android:layout_marginBottom="16dp"
+        app:cardCornerRadius="40dp"
+        app:cardElevation="0dp"
+        app:cardBackgroundColor="#FBE9E7">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="S"
+            android:textColor="@color/naranja_sabor"
+            android:textSize="36sp"
+            android:textStyle="bold" />
+    </androidx.cardview.widget.CardView>
+
+    <!-- TÃ­tulo de la App -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/app_name"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+    <!-- SubtÃ­tulo -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/subtitle_login"
+        android:textSize="14sp"
+        android:textColor="#757575"
+        android:layout_marginBottom="32dp" />
+
+    <!-- Campo Usuario -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etUsuario"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/hint_usuario"
+            android:inputType="text"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Campo ContraseÃ±a con opciÃ³n de mostrar/ocultar (password_toggle) -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        app:endIconMode="password_toggle">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etClave"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/hint_contrasena"
+            android:inputType="textPassword"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- BotÃ³n Ingresar -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnIngresar"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="@string/btn_ingresar"
+        android:textSize="16sp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <!-- Texto de prueba por defecto -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/txt_prueba"
+        android:textSize="12sp"
+        android:textColor="#9E9E9E"
+        android:layout_marginTop="24dp" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:id="@+id/tvBienvenida"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Hola, admin"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+    <TextView
+        android:id="@+id/tvRol"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Rol: Administrador"
+        android:textSize="14sp"
+        android:textColor="#757575"
+        android:layout_marginBottom="24dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnPlatos"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="Platos"
+        android:layout_marginBottom="12dp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnMesas"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="Mesas"
+        android:layout_marginBottom="12dp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnPedidos"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="Pedidos"
+        android:layout_marginBottom="12dp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnReportes"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:text="Reportes"
+        android:layout_marginBottom="24dp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSalir"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Salir"
+        app:backgroundTint="@color/rojo_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Pedidos"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Grilla de mesas (HU-08, CA1) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerMesasPedido"
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:layout_marginBottom="12dp" />
+
+    <!-- TÃ­tulo de mesa seleccionada -->
+    <TextView
+        android:id="@+id/tvMesaSeleccionada"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Seleccione una mesa"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Selector de Plato y Cantidad -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Plato"
+        android:textSize="12sp"
+        android:textColor="#757575" />
+
+    <Spinner
+        android:id="@+id/spPlatosDisponibles"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="12dp"
+        android:background="@android:drawable/btn_dropdown"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etCantidadPlato"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Cant."
+                android:text="1"
+                android:inputType="number"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAgregarPlato"
+            android:layout_width="0dp"
+            android:layout_height="55dp"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="Agregar"
+            app:backgroundTint="@color/naranja_sabor"
+            app:cornerRadius="8dp" />
+    </LinearLayout>
+
+    <!-- Lista de items agregados -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerDetallePedido"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Total -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Total"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/black" />
+
+        <TextView
+            android:id="@+id/tvTotalPedido"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="S/ 0.00"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:textColor="@color/naranja_sabor" />
+    </LinearLayout>
+
+    <!-- BotÃ³n Ver cuenta -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnVerCuenta"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Ver cuenta"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Registrar Nueva Mesa"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="24dp" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etNumeroMesa"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="NÃºmero de mesa"
+            android:inputType="number"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etCapacidadMesa"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Capacidad (1 a 12 personas)"
+            android:inputType="number"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnGuardarMesa"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Guardar Mesa"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:id="@+id/tvTituloPlato"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Registrar Nuevo Plato"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="24dp" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etNombrePlato"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Nombre del plato"
+            android:inputType="text"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CategorÃ­a"
+        android:textSize="14sp"
+        android:textColor="#757575"
+        android:layout_marginBottom="4dp" />
+
+    <Spinner
+        android:id="@+id/spCategoriaPlato"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_marginBottom="16dp"
+        android:background="@android:drawable/btn_dropdown"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etPrecioPlato"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Precio (S/)"
+            android:inputType="numberDecimal"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Switch de Disponibilidad (Prototipo P1-04) -->
+    <com.google.android.material.switchmaterial.SwitchMaterial
+        android:id="@+id/swDisponible"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Disponible"
+        android:checked="true"
+        android:textSize="16sp"
+        android:layout_marginBottom="24dp" />
+
+    <!-- BotÃ³n Principal: Guardar / Actualizar -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnGuardarPlato"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Guardar Plato"
+        android:layout_marginBottom="12dp"
+        app:backgroundTint="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+    <!-- BotÃ³n Secundario: Eliminar (Solo visible en modo ediciÃ³n) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnEliminarPlato"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Eliminar"
+        android:visibility="gone"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        app:strokeColor="@color/rojo_sabor"
+        android:textColor="@color/rojo_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@color/fondo_gris">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Reportes"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Tarjeta Principal: Venta de hoy (Prototipo P1-07) -->
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:cardBackgroundColor="#FBE9E7"
+        app:strokeWidth="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Venta de hoy"
+                android:textSize="14sp"
+                android:textColor="#757575" />
+
+            <TextView
+                android:id="@+id/tvVentaHoy"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="S/ 0.00"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:textColor="@color/naranja_sabor"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Tarjetas secundarias: Pedidos y Ticket Promedio -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="20dp">
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="6dp"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="1dp"
+            app:cardBackgroundColor="@color/white"
+            app:strokeWidth="1dp"
+            app:strokeColor="#E0E0E0">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Pedidos"
+                    android:textSize="12sp"
+                    android:textColor="#757575" />
+
+                <TextView
+                    android:id="@+id/tvCantidadPedidosHoy"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/black"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            app:cardCornerRadius="10dp"
+            app:cardElevation="1dp"
+            app:cardBackgroundColor="@color/white"
+            app:strokeWidth="1dp"
+            app:strokeColor="#E0E0E0">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Ticket prom."
+                    android:textSize="12sp"
+                    android:textColor="#757575" />
+
+                <TextView
+                    android:id="@+id/tvTicketPromedio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="S/ 0.00"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/black"
+                    android:layout_marginTop="2dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+    </LinearLayout>
+
+    <!-- SecciÃ³n Platos mÃ¡s pedidos -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Platos mÃ¡s pedidos"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginBottom="12dp" />
+
+    <!-- Mensaje si no hay ventas hoy (HU-10, CA3) -->
+    <TextView
+        android:id="@+id/tvSinVentasHoy"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Sin ventas hoy"
+        android:textSize="14sp"
+        android:textColor="#757575"
+        android:gravity="center"
+        android:visibility="gone"
+        android:padding="16dp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerTopPlatos"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="16dp" />
+
+    <!-- BotÃ³n Compartir Resumen (HU-10) -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCompartirResumen"
+        android:layout_width="match_parent"
+        android:layout_height="55dp"
+        android:text="Compartir resumen"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        app:strokeColor="@color/naranja_sabor"
+        android:textColor="@color/naranja_sabor"
+        app:cornerRadius="8dp" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingVertical="10dp"
+    android:paddingHorizontal="4dp">
+
+    <TextView
+        android:id="@+id/tvCantidadNombre"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="2 x Lomo saltado"
+        android:textSize="15sp"
+        android:textColor="@color/black" />
+
+    <TextView
+        android:id="@+id/tvSubtotal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="50.00"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="6dp"
+    app:cardCornerRadius="10dp"
+    app:cardElevation="2dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#E0E0E0">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/tvNumeroMesa"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Mesa 1"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/black" />
+
+        <TextView
+            android:id="@+id/tvCapacidadMesa"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Cap: 4 pers."
+            android:textSize="12sp"
+            android:textColor="#757575"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            android:id="@+id/tvEstadoMesa"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="LIBRE"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="#2E7D32"
+            android:layout_marginTop="8dp" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="2dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#E0E0E0">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvNombrePlato"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lomo saltado"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="@color/black" />
+
+            <TextView
+                android:id="@+id/tvCategoriaPrecioPlato"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Fondos Â· S/ 25.00"
+                android:textSize="14sp"
+                android:textColor="#757575"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvEstadoPlato"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Disponible"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:textColor="#2E7D32" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="8dp">
+
+    <TextView
+        android:id="@+id/tvNombreTopPlato"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="Lomo saltado"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+    <ProgressBar
+        android:id="@+id/progressTopPlato"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="0dp"
+        android:layout_height="12dp"
+        android:layout_weight="1"
+        android:layout_marginHorizontal="8dp"
+        android:progressDrawable="@drawable/bg_progress_orange"
+        android:max="100"
+        android:progress="50" />
+
+    <TextView
+        android:id="@+id/tvCantidadTopPlato"
+        android:layout_width="32dp"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:text="24"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Identidad visual PollerÃ­a El Buen Sabor (HU-03) -->
+    <color name="naranja_sabor">#E64A19</color>
+    <color name="rojo_sabor">#D32F2F</color>
+    <color name="naranja_claro">#FF7043</color>
+    <color name="fondo_gris">#F5F5F5</color>
+</resources>
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#F5F5F5</color>
+</resources>
+<resources>
+    <string name="app_name">SaborApp</string>
+
+    <!-- Textos para el Login (HU-01) -->
+    <string name="subtitle_login">PollerÃ­a El Buen Sabor</string>
+    <string name="hint_usuario">Usuario</string>
+    <string name="hint_contrasena">ContraseÃ±a</string>
+    <string name="btn_ingresar">Ingresar</string>
+    <string name="txt_prueba">Prueba: admin / 1234</string>
+
+    <!-- Mensajes de error (HU-01) -->
+    <string name="error_campo_vacio">Campo requerido</string>
+    <string name="error_credenciales">Credenciales incorrectas</string>
+
+    <!-- Platos (HU-05, HU-07) -->
+    <string name="titulo_catalogo_platos">CatÃ¡logo de Platos</string>
+    <string name="titulo_registrar_plato">Registrar Nuevo Plato</string>
+    <string name="titulo_editar_plato">Editar plato</string>
+    <string name="hint_nombre_plato">Nombre del plato</string>
+    <string name="hint_categoria">CategorÃ­a</string>
+    <string name="hint_precio">Precio (S/)</string>
+    <string name="btn_guardar_plato">Guardar Plato</string>
+    <string name="btn_actualizar_plato">Actualizar</string>
+    <string name="btn_eliminar_plato">Eliminar</string>
+    <string name="switch_disponible">Disponible</string>
+    <string name="hint_buscar_plato">Buscar plato</string>
+
+    <!-- Mesas (HU-06) -->
+    <string name="titulo_listado_mesas">Listado de Mesas</string>
+    <string name="titulo_registrar_mesa">Registrar Nueva Mesa</string>
+    <string name="hint_numero_mesa">NÃºmero de mesa</string>
+    <string name="hint_capacidad_mesa">Capacidad (1 a 12 personas)</string>
+    <string name="btn_guardar_mesa">Guardar Mesa</string>
+
+    <!-- Pedidos y Cuenta (HU-08, HU-09, HU-11) -->
+    <string name="titulo_pedidos">Pedidos</string>
+    <string name="lbl_plato">Plato</string>
+    <string name="hint_cant">Cant.</string>
+    <string name="btn_agregar">Agregar</string>
+    <string name="btn_ver_cuenta">Ver cuenta</string>
+    <string name="btn_cerrar_cuenta">Cerrar cuenta</string>
+    <string name="btn_compartir_whatsapp">Compartir por WhatsApp</string>
+    <string name="lbl_total">Total</string>
+
+    <!-- Reportes (HU-10) -->
+    <string name="titulo_reportes">Reportes</string>
+    <string name="lbl_venta_hoy">Venta de hoy</string>
+    <string name="lbl_pedidos">Pedidos</string>
+    <string name="lbl_ticket_promedio">Ticket prom.</string>
+    <string name="lbl_platos_mas_pedidos">Platos mÃ¡s pedidos</string>
+    <string name="lbl_sin_ventas_hoy">Sin ventas hoy</string>
+    <string name="btn_compartir_resumen">Compartir resumen</string>
+</resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Tema principal de la app. Usamos MaterialComponents sin ActionBar (NoActionBar) -->
+    <style name="Theme.SaborApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Colores principales -->
+        <item name="colorPrimary">@color/naranja_sabor</item>
+        <item name="colorPrimaryVariant">@color/rojo_sabor</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <!-- Colores secundarios -->
+        <item name="colorSecondary">@color/naranja_claro</item>
+        <item name="colorSecondaryVariant">@color/naranja_sabor</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <!-- Color de la barra de estado superior del celular -->
+        <item name="android:statusBarColor">@color/rojo_sabor</item>
+    </style>
+</resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Tema principal de la app. Usamos MaterialComponents sin ActionBar (NoActionBar) -->
+    <style name="Theme.SaborApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Colores principales -->
+        <item name="colorPrimary">@color/naranja_sabor</item>
+        <item name="colorPrimaryVariant">@color/rojo_sabor</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <!-- Colores secundarios -->
+        <item name="colorSecondary">@color/naranja_claro</item>
+        <item name="colorSecondaryVariant">@color/naranja_sabor</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <!-- Color de la barra de estado superior del celular -->
+        <item name="android:statusBarColor">@color/rojo_sabor</item>
+    </style>
+</resources>
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample backup rules file; uncomment and customize as necessary.
+   See https://developer.android.com/guide/topics/data/autobackup
+   for details.
+   Note: This file is ignored for devices older than API 31
+   See https://developer.android.com/about/versions/12/backup-restore
+-->
+<full-backup-content>
+    <!--
+   <include domain="sharedpref" path="."/>
+   <exclude domain="sharedpref" path="device.xml"/>
+-->
+</full-backup-content>
+<?xml version="1.0" encoding="utf-8"?><!--
+   Sample data extraction rules file; uncomment and customize as necessary.
+   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
+   for details.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- TODO: Use <include> and <exclude> to control what is backed up.
+        <include .../>
+        <exclude .../>
+        -->
+    </cloud-backup>
+    <!--
+    <device-transfer>
+        <include .../>
+        <exclude .../>
+    </device-transfer>
+    -->
+</data-extraction-rules>
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SaborApp">
+
+        <!-- Actividad principal de Login -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- MenÃº Principal -->
+        <activity
+            android:name=".MainActivity2"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- CatÃ¡logo de Platos -->
+        <activity
+            android:name=".ListaPlatosActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Formulario de Registro / EdiciÃ³n de Platos -->
+        <activity
+            android:name=".RegistrarPlatoActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Listado de Mesas -->
+        <activity
+            android:name=".ListaMesasActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Formulario de Registro de Mesas -->
+        <activity
+            android:name=".RegistrarMesaActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- MÃ³dulo de Pedidos por Mesa -->
+        <activity
+            android:name=".PedidoActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Cuenta de la Mesa -->
+        <activity
+            android:name=".CuentaActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Reportes de Ventas -->
+        <activity
+            android:name=".ReportesActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+    </application>
+
+</manifest>
+package com.senati.saborapp
+
+import org.junit.Test
+
+import org.junit.Assert.*
+
+/**
+ * Example local unit test, which will execute on the development machine (host).
+ *
+ * See [testing documentation](http://d.android.com/tools/testing).
+ */
+class ExampleUnitTest {
+    @Test
+    fun addition_isCorrect() {
+        assertEquals(4, 2 + 2)
+    }
+}

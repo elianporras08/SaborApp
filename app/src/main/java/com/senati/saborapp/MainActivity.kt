@@ -1,5 +1,6 @@
 package com.senati.saborapp
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -13,6 +14,22 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Verificar sesión recordada en SharedPreferences (HU-12, CA1)
+        val prefs = getSharedPreferences("SaborAppPrefs", Context.MODE_PRIVATE)
+        val isLoggedIn = prefs.getBoolean("is_logged_in", false)
+        if (isLoggedIn) {
+            val usuarioGuardado = prefs.getString("usuario", "admin") ?: "admin"
+            val rolGuardado = prefs.getString("rol", "ADMIN") ?: "ADMIN"
+
+            val intent = Intent(this, MainActivity2::class.java).apply {
+                putExtra("EXTRA_USUARIO", usuarioGuardado)
+                putExtra("EXTRA_ROL", rolGuardado)
+            }
+            startActivity(intent)
+            finish()
+            return
+        }
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -47,12 +64,19 @@ class MainActivity : AppCompatActivity() {
                 if (userLogged != null) {
                     Toast.makeText(this, "Bienvenido ${userLogged.usuario}", Toast.LENGTH_SHORT).show()
 
+                    // Guardar sesión recordada (HU-12, CA1)
+                    prefs.edit()
+                        .putBoolean("is_logged_in", true)
+                        .putString("usuario", userLogged.usuario)
+                        .putString("rol", userLogged.rol)
+                        .apply()
+
                     val intent = Intent(this, MainActivity2::class.java).apply {
                         putExtra("EXTRA_USUARIO", userLogged.usuario)
                         putExtra("EXTRA_ROL", userLogged.rol)
                     }
                     startActivity(intent)
-                    finish() // Cierra el login para que atrás no regrese
+                    finish()
                 } else {
                     // Credenciales incorrectas (CA3)
                     Toast.makeText(this, getString(R.string.error_credenciales), Toast.LENGTH_SHORT).show()

@@ -1,9 +1,9 @@
 package com.senati.saborapp
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.senati.saborapp.databinding.ActivityMain2Binding
 
@@ -49,12 +49,17 @@ class MainActivity2 : AppCompatActivity() {
             startActivity(intent)
         }
 
+        // Abrir Reportes de ventas (HU-10)
         binding.btnReportes.setOnClickListener {
-            Toast.makeText(this, "Módulo de Reportes (Sprint 4)", Toast.LENGTH_SHORT).show()
+            val intent = Intent(this, ReportesActivity::class.java)
+            startActivity(intent)
         }
 
-        // Botón Salir
+        // Botón Salir: Limpia la sesión recordada (HU-12, CA2)
         binding.btnSalir.setOnClickListener {
+            val prefs = getSharedPreferences("SaborAppPrefs", Context.MODE_PRIVATE)
+            prefs.edit().clear().apply()
+
             val intent = Intent(this, MainActivity::class.java)
             startActivity(intent)
             finish()

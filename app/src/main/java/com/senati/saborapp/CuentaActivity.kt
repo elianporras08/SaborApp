@@ -1,5 +1,6 @@
 package com.senati.saborapp
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -48,8 +49,30 @@ class CuentaActivity : AppCompatActivity() {
             }
         }
 
+        // Compartir la cuenta por WhatsApp / Apps de mensajería (HU-11, CA1, CA2, CA3)
         binding.btnCompartirWhatsApp.setOnClickListener {
-            Toast.makeText(this, "Función de compartir (Sprint 4)", Toast.LENGTH_SHORT).show()
+            val pedido = pedidoActual
+            val sb = StringBuilder()
+            sb.append("Pollería El Buen Sabor\n")
+            sb.append("Cuenta - Mesa $numeroMesa\n")
+
+            if (pedido != null) {
+                sb.append("Pedido #${pedido.id} · ${pedido.fecha}\n\n")
+                val detalles = pedidoDao.listarDetallesPedido(pedido.id)
+                for (d in detalles) {
+                    sb.append("${d.cantidad} x ${d.nombrePlato} - S/ %.2f\n".format(d.subtotal))
+                }
+                sb.append("\nTotal: S/ %.2f\n".format(pedido.total))
+            } else {
+                sb.append("Total: S/ 0.00\n")
+            }
+            sb.append("¡Gracias por su preferencia!")
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, sb.toString())
+            }
+            startActivity(Intent.createChooser(shareIntent, "Compartir cuenta"))
         }
     }
 

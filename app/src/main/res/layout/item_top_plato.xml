@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="8dp">
+
+    <TextView
+        android:id="@+id/tvNombreTopPlato"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="Lomo saltado"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+    <ProgressBar
+        android:id="@+id/progressTopPlato"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="0dp"
+        android:layout_height="12dp"
+        android:layout_weight="1"
+        android:layout_marginHorizontal="8dp"
+        android:progressDrawable="@drawable/bg_progress_orange"
+        android:max="100"
+        android:progress="50" />
+
+    <TextView
+        android:id="@+id/tvCantidadTopPlato"
+        android:layout_width="32dp"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:text="24"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="@color/black" />
+
+</LinearLayout>

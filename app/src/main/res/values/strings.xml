@@ -32,7 +32,7 @@
     <string name="hint_capacidad_mesa">Capacidad (1 a 12 personas)</string>
     <string name="btn_guardar_mesa">Guardar Mesa</string>
 
-    <!-- Pedidos y Cuenta (HU-08, HU-09) -->
+    <!-- Pedidos y Cuenta (HU-08, HU-09, HU-11) -->
     <string name="titulo_pedidos">Pedidos</string>
     <string name="lbl_plato">Plato</string>
     <string name="hint_cant">Cant.</string>
@@ -41,4 +41,13 @@
     <string name="btn_cerrar_cuenta">Cerrar cuenta</string>
     <string name="btn_compartir_whatsapp">Compartir por WhatsApp</string>
     <string name="lbl_total">Total</string>
+
+    <!-- Reportes (HU-10) -->
+    <string name="titulo_reportes">Reportes</string>
+    <string name="lbl_venta_hoy">Venta de hoy</string>
+    <string name="lbl_pedidos">Pedidos</string>
+    <string name="lbl_ticket_promedio">Ticket prom.</string>
+    <string name="lbl_platos_mas_pedidos">Platos más pedidos</string>
+    <string name="lbl_sin_ventas_hoy">Sin ventas hoy</string>
+    <string name="btn_compartir_resumen">Compartir resumen</string>
 </resources>
