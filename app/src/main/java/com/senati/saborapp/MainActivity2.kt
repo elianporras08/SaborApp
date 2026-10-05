@@ -12,15 +12,20 @@ class MainActivity2 : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicializar ViewBinding para el menú principal
         binding = ActivityMain2Binding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Programar el botón Salir para regresar al Login (HU-02, CA3)
+        // Abrir el catálogo de platos (HU-05)
+        binding.btnPlatos.setOnClickListener {
+            val intent = Intent(this, ListaPlatosActivity::class.java)
+            startActivity(intent)
+        }
+
+        // Botón Salir
         binding.btnSalir.setOnClickListener {
             val intent = Intent(this, MainActivity::class.java)
             startActivity(intent)
-            finish() // Cierra el menú para que no regrese con atrás
+            finish()
         }
     }
 }

@@ -11,20 +11,36 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SaborApp">
+
+        <!-- Actividad principal de Login -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Menú Principal -->
         <activity
             android:name=".MainActivity2"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- Catálogo de Platos -->
+        <activity
+            android:name=".ListaPlatosActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Formulario de Registro de Platos -->
+        <activity
+            android:name=".RegistrarPlatoActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
     </application>
 
 </manifest>
