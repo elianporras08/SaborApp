@@ -1,0 +1,17 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Tema principal de la app. Usamos MaterialComponents sin ActionBar (NoActionBar) -->
+    <style name="Theme.SaborApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Colores principales -->
+        <item name="colorPrimary">@color/naranja_sabor</item>
+        <item name="colorPrimaryVariant">@color/rojo_sabor</item>
+        <item name="colorOnPrimary">@color/white</item>
+
+        <!-- Colores secundarios -->
+        <item name="colorSecondary">@color/naranja_claro</item>
+        <item name="colorSecondaryVariant">@color/naranja_sabor</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <!-- Color de la barra de estado superior del celular -->
+        <item name="android:statusBarColor">@color/rojo_sabor</item>
+    </style>
+</resources>
