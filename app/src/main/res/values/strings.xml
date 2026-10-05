@@ -11,4 +11,19 @@
     <!-- Mensajes de error (HU-01) -->
     <string name="error_campo_vacio">Campo requerido</string>
     <string name="error_credenciales">Credenciales incorrectas</string>
+
+    <!-- Platos (HU-05) -->
+    <string name="titulo_catalogo_platos">Catálogo de Platos</string>
+    <string name="titulo_registrar_plato">Registrar Nuevo Plato</string>
+    <string name="hint_nombre_plato">Nombre del plato</string>
+    <string name="hint_categoria">Categoría</string>
+    <string name="hint_precio">Precio (S/)</string>
+    <string name="btn_guardar_plato">Guardar Plato</string>
+
+    <!-- Mesas (HU-06) -->
+    <string name="titulo_listado_mesas">Listado de Mesas</string>
+    <string name="titulo_registrar_mesa">Registrar Nueva Mesa</string>
+    <string name="hint_numero_mesa">Número de mesa</string>
+    <string name="hint_capacidad_mesa">Capacidad (1 a 12 personas)</string>
+    <string name="btn_guardar_mesa">Guardar Mesa</string>
 </resources>

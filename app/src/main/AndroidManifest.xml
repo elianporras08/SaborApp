@@ -41,6 +41,18 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Listado de Mesas -->
+        <activity
+            android:name=".ListaMesasActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Formulario de Registro de Mesas -->
+        <activity
+            android:name=".RegistrarMesaActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
     </application>
 
 </manifest>

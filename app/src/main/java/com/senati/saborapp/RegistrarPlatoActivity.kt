@@ -1,6 +1,7 @@
 package com.senati.saborapp
 
 import android.os.Bundle
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.senati.saborapp.databinding.ActivityRegistrarPlatoBinding
@@ -18,31 +19,50 @@ class RegistrarPlatoActivity : AppCompatActivity() {
 
         platoDao = PlatoDao(this)
 
+        // Configurar Spinner de categorías (Entradas, Fondos, Bebidas, Postres) - HU-05, CA3
+        val categorias = arrayOf("Entradas", "Fondos", "Bebidas", "Postres")
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, categorias)
+        binding.spCategoriaPlato.adapter = adapter
+
         binding.btnGuardarPlato.setOnClickListener {
             val nombre = binding.etNombrePlato.text.toString().trim()
-            val categoria = binding.etCategoriaPlato.text.toString().trim()
+            val categoria = binding.spCategoriaPlato.selectedItem?.toString() ?: "Fondos"
             val precioStr = binding.etPrecioPlato.text.toString().trim()
 
-            // Validar campos vacíos
-            if (nombre.isEmpty() || categoria.isEmpty() || precioStr.isEmpty()) {
-                Toast.makeText(this, "Por favor complete todos los campos", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+            var isValid = true
+
+            // Validar si nombre está vacío (CA1)
+            if (nombre.isEmpty()) {
+                binding.etNombrePlato.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etNombrePlato.error = null
             }
 
-            // Validar que el precio sea mayor a 0 (Criterio de validación de la BD)
+            // Validar si precio está vacío (CA1)
+            if (precioStr.isEmpty()) {
+                binding.etPrecioPlato.error = getString(R.string.error_campo_vacio)
+                isValid = false
+            } else {
+                binding.etPrecioPlato.error = null
+            }
+
+            if (!isValid) return@setOnClickListener
+
+            // Validar precio mayor a 0 (CA2)
             val precio = precioStr.toDoubleOrNull()
             if (precio == null || precio <= 0) {
-                binding.etPrecioPlato.error = "Ingrese un precio válido mayor a 0"
+                binding.etPrecioPlato.error = "Precio inválido"
+                Toast.makeText(this, "Precio inválido", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // Crear objeto Plato (id se autoincrementa en SQLite)
             val nuevoPlato = Plato(0, nombre, categoria, precio, 1)
             val resultado = platoDao.insertar(nuevoPlato)
 
             if (resultado) {
                 Toast.makeText(this, "Plato registrado exitosamente", Toast.LENGTH_SHORT).show()
-                finish() // Cierra la pantalla y regresa al listado
+                finish()
             } else {
                 Toast.makeText(this, "Error al registrar el plato", Toast.LENGTH_SHORT).show()
             }

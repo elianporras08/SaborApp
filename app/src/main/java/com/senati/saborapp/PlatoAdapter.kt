@@ -17,8 +17,14 @@ class PlatoAdapter(private val listaPlatos: List<Plato>) : RecyclerView.Adapter<
     override fun onBindViewHolder(holder: PlatoViewHolder, position: Int) {
         val plato = listaPlatos[position]
         holder.binding.tvNombrePlato.text = plato.nombre
-        holder.binding.tvCategoriaPlato.text = plato.categoria
-        holder.binding.tvPrecioPlato.text = "S/ %.2f".format(plato.precio)
+        holder.binding.tvCategoriaPrecioPlato.text = "${plato.categoria} · S/ %.2f".format(plato.precio)
+        if (plato.disponible == 1) {
+            holder.binding.tvEstadoPlato.text = "Disponible"
+            holder.binding.tvEstadoPlato.setTextColor(holder.itemView.context.getColor(android.R.color.holo_green_dark))
+        } else {
+            holder.binding.tvEstadoPlato.text = "Agotado"
+            holder.binding.tvEstadoPlato.setTextColor(holder.itemView.context.getColor(android.R.color.holo_red_dark))
+        }
     }
 
     override fun getItemCount(): Int = listaPlatos.size
